@@ -1,0 +1,11 @@
+_ > nanoagent.plugin.v0001.ProductConfig:
+tagline: "Find arXiv papers and keep their sources"
+summary: "Name a paper by its arXiv id or link, or describe it in your own words, and it finds the paper and saves its LaTeX source into your workspace, in a folder named by its arXiv id."
+highlights:
+  - "Saves the full LaTeX source, not just the PDF"
+  - "Finds papers through OpenAlex, so arXiv is asked only for the source"
+  - "A paper saved before is used again, not downloaded twice"
+steps:
+  - "Tell it which paper you want: an arXiv id or link, a title, a topic or an author"
+  - "It finds the paper and shows it, with a button to save its source"
+  - "Its source is saved in a folder named by its arXiv id, e.g. papers/1706.03762"

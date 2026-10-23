@@ -1,0 +1,48 @@
+_ > nanoagent.plugin.v0001.ManifestConfig:
+id: lsh-similar-pairs
+name: LSH Similar Pairs
+version: 0.1.0
+status: in-development
+spec: nanoagent.plugin/v0001
+
+runtime > nanoagent.plugin.v0001.RuntimeConfig:
+  type: mcp_stdio
+  command: [uv, run, --frozen, python, -m, plugin]
+
+permissions > nanoagent.plugin.v0001.PermissionsConfig:
+  network > nanoagent.plugin.v0001.NetworkConfig:
+    hosts: [api.openalex.org, export.arxiv.org, api.datacite.org]
+  filesystem > nanoagent.plugin.v0001.FilesystemConfig:
+    write: [workspace]
+
+# One entry per contract.Tool; its input and output classes are contract.TOOLS's.
+tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
+  search_papers:
+    description: Find papers on arXiv and their arXiv ids by an arXiv id or URL or in plain words, from OpenAlex, else arXiv, else DataCite
+  download_source:
+    description: Save an arXiv paper's source in a folder named by its id, downloading it unless it is there already
+
+# One entry per contract.Task; its input and output classes are contract.TASKS's.
+tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
+  search-papers:
+    description: Search arXiv for papers
+    runner: tool
+    tools: [search_papers]
+    reference: null
+    instructions: Find the papers on arXiv the query names (an arXiv id or URL, or a title, topic or authors in plain words) and return them, best match first.
+  save-paper-source:
+    description: Save a paper's LaTeX source by its arXiv ID
+    runner: tool
+    tools: [download_source]
+    reference: null
+    instructions: Validate the arXiv ID and return its source in <destination>/<arxiv id>, downloading and unpacking it safely unless it is there already.
+  find-and-save-paper:
+    description: Find a described paper and save its LaTeX source
+    runner: agent
+    tools: [search_papers, download_source]
+    reference: null
+    instructions: |-
+      The request names the paper in the person's words: its arXiv id or URL, title, topic, authors or year. Find it with search_papers, passing an arXiv id or URL as it is, else its title or its topic and authors in plain words, and pick the one result that matches the request.
+      Save its source with download_source, passing the arxiv_id as search_papers returned it and the destination; it goes in <destination>/<arxiv id>.
+      Submit that paper: its search_papers fields, and source_url and folder exactly as download_source returned them.
+      If download_source fails because arXiv is limiting requests (HTTP 429), call no tool again and end without submitting: asking again only keeps the limit on.
