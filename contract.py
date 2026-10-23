@@ -8,100 +8,127 @@ from slimconfig import Output
 
 
 class Tool(Enum):
-    SEARCH_PAPERS = "search_papers"
-    DOWNLOAD_SOURCE = "download_source"
+    DESCRIBE_DATASET = "describe_dataset"
+    LSH_CANDIDATES = "lsh_candidates"
+    SCORE_PAIRS = "score_pairs"
+    EXACT_PAIRS = "exact_pairs"
 
 
 class Task(Enum):
-    SEARCH_PAPERS = "search-papers"
-    SAVE_PAPER_SOURCE = "save-paper-source"
-    FIND_AND_SAVE_PAPER = "find-and-save-paper"
+    FIND_SIMILAR_PAIRS = "find-similar-pairs"
 
 
-QUERY = "The paper in plain words: its title, topic or authors, e.g. attention is all you need vaswani"
-DESTINATION = (
-    "The folder relative to the plugin workspace that papers are saved in, e.g. papers: a paper's source"
-    " goes in <destination>/<arxiv id>, and one saved there before is used again"
-)
-ARXIV_ID = "The arXiv identifier, without a version"
-TITLE = "The title, as the search engine lists it"
-AUTHORS = "The authors' names, as the search engine lists them, in order"
-SUMMARY = "The abstract, as the search engine lists it; empty when it has none"
-PUBLISHED = "When it was published, YYYY-MM-DD, as the search engine lists it; empty when it has no date"
-ABS_URL = "The paper's arXiv abstract page"
-SOURCE_URL = "The arXiv URL the source archive came from, export.arxiv.org/src/<arxiv id>"
-FOLDER = "The folder the source is in, <destination>/<arxiv id>, relative to the plugin workspace"
-FILES = "The unpacked files, relative to the folder"
+class Dataset(Enum):
+    NLP_SMALL = "nlp-small"
+    NLP_LARGE = "nlp-large"
+    EDGE_CASES = "edge-cases"
+
+
+DATASET = "The bundled keyword dataset"
+THRESHOLD = "The cosine similarity threshold as a decimal string, e.g. 0.80: a pair qualifies when its cosine is at least it"
+BUDGET = "The most distinct pairs score_pairs may score in this task, over all its calls"
+RUN_ID = "The LSH run's id, <dataset>-<bits_per_band>x<bands>, as lsh_candidates returned it"
+KEYWORD_A = "The pair's first keyword, the one that sorts first"
+KEYWORD_B = "The pair's second keyword, the one that sorts second"
 
 
 @dataclass
-class Paper(Output):
-    arxiv_id: Annotated[str, ARXIV_ID]
-    title: Annotated[str, TITLE]
-    authors: Annotated[list[str], AUTHORS]
-    summary: Annotated[str, SUMMARY]
-    published: Annotated[str, PUBLISHED]
-    abs_url: Annotated[str, ABS_URL]
+class Pair(Output):
+    a: Annotated[str, KEYWORD_A]
+    b: Annotated[str, KEYWORD_B]
 
 
 @dataclass
-class FoundPaperOutput(Output):
-    # What the agent submits: the paper it picked, and where download_source saved it. Not the
-    # files: download_source's own check holds them, and a long list is no list to retype.
-    arxiv_id: Annotated[str, ARXIV_ID]
-    title: Annotated[str, TITLE]
-    authors: Annotated[list[str], AUTHORS]
-    summary: Annotated[str, SUMMARY]
-    published: Annotated[str, PUBLISHED]
-    abs_url: Annotated[str, ABS_URL]
-    source_url: Annotated[str, SOURCE_URL]
-    folder: Annotated[str, FOLDER]
+class ScoredPair(Output):
+    a: Annotated[str, KEYWORD_A]
+    b: Annotated[str, KEYWORD_B]
+    dot: Annotated[int, "The dot product of the two keywords' integer vectors"]
+    norm_a: Annotated[int, "The squared length of a's integer vector, the sum of its squared entries"]
+    norm_b: Annotated[int, "The squared length of b's integer vector, the sum of its squared entries"]
 
 
 @dataclass
-class SearchInput(Output):
-    query: Annotated[str, QUERY]
-    max_results: Annotated[int, "How many papers to return, best match first, 1 to 50"]
+class BandCount(Output):
+    matched_bands: Annotated[int, "How many bands' signatures the candidates in this group share"]
+    candidates: Annotated[int, "How many candidate pairs share exactly that many bands"]
+    first_rank: Annotated[int, "The rank of this group's first candidate, from 1"]
+    last_rank: Annotated[int, "The rank of this group's last candidate"]
 
 
 @dataclass
-class SearchOutput(Output):
-    query: Annotated[str, "The query, as given without surrounding spaces"]
-    engine: Annotated[str, "The search engine the papers came from: OpenAlex, arXiv or DataCite, the first to find any"]
-    passed_over: Annotated[
-        list[str], "Each engine asked before it, and why it found none: it failed, was slow or found nothing"
+class DescribeInput(Output):
+    dataset: Annotated[Dataset, DATASET]
+
+
+@dataclass
+class DescribeOutput(Output):
+    dataset: Annotated[Dataset, DATASET]
+    keywords: Annotated[int, "How many keywords the dataset holds"]
+    dimension: Annotated[int, "How many entries each keyword's integer vector has"]
+    hyperplanes: Annotated[int, "How many fixed hyperplanes LSH may use, bits_per_band times bands at most"]
+    pairs: Annotated[int, "How many keyword pairs there are, keywords choose 2"]
+
+
+@dataclass
+class LshInput(Output):
+    dataset: Annotated[Dataset, DATASET]
+    bits_per_band: Annotated[int, "How many hyperplane sign bits make one band's signature, at least 1"]
+    bands: Annotated[int, "How many bands to hash, at least 1; a pair is a candidate when any band's signatures match"]
+
+
+@dataclass
+class LshOutput(Output):
+    run_id: Annotated[str, RUN_ID]
+    candidates: Annotated[int, "How many distinct candidate pairs the run found"]
+    histogram: Annotated[
+        list[BandCount], "The candidates grouped by how many bands they share, most first, in rank order"
     ]
-    source_url: Annotated[str, "The engine's request the papers came from"]
-    papers: Annotated[list[Paper], "The matching papers on arXiv, best match first"]
 
 
 @dataclass
-class DownloadInput(Output):
-    arxiv_id: Annotated[str, "A modern or legacy arXiv identifier, optionally with a version"]
-    destination: Annotated[str, DESTINATION]
+class ScoreInput(Output):
+    dataset: Annotated[Dataset, DATASET]
+    run_id: Annotated[str, RUN_ID]
+    start_rank: Annotated[int, "The rank of the first candidate to score, from 1"]
+    count: Annotated[int, "How many candidates to score from start_rank on, at least 1"]
+    threshold: Annotated[str, THRESHOLD]
+    budget: Annotated[int, "The task input's budget, copied as given: the most distinct pairs score_pairs may score"]
 
 
 @dataclass
-class DownloadOutput(Output):
-    arxiv_id: Annotated[str, "The arXiv identifier, as given without surrounding spaces"]
-    source_url: Annotated[str, SOURCE_URL]
-    folder: Annotated[str, FOLDER]
-    files: Annotated[list[str], FILES]
-    reused: Annotated[bool, "Whether the source was in the folder already, so nothing was downloaded"]
+class ScoreOutput(Output):
+    qualifying: Annotated[list[ScoredPair], "The newly scored pairs in the range that qualify, in rank order"]
+    scored: Annotated[int, "How many pairs in the range were scored now and charged to the budget"]
+    skipped: Annotated[int, "How many pairs in the range were scored by an earlier call, so not scored or charged again"]
+    total_scored: Annotated[int, "How many distinct pairs all calls so far have scored"]
+    remaining: Annotated[int, "How many more pairs the budget allows"]
 
 
 @dataclass
 class FindInput(Output):
-    request: Annotated[str, "The paper in the person's words: its title, topic, authors, year or arXiv id"]
-    destination: Annotated[str, DESTINATION]
+    dataset: Annotated[Dataset, DATASET]
+    threshold: Annotated[str, THRESHOLD]
+    budget: Annotated[int, BUDGET]
+    min_recall: Annotated[str, "The least share of all qualifying pairs to find, as a decimal string, e.g. 0.90"]
+
+
+@dataclass
+class ExactOutput(Output):
+    dataset: Annotated[Dataset, DATASET]
+    threshold: Annotated[str, THRESHOLD]
+    keywords: Annotated[list[str], "Every keyword in the dataset, in its order"]
+    pairs: Annotated[list[ScoredPair], "Every qualifying pair, by brute force, sorted by a then b"]
+
+
+@dataclass
+class FindOutput(Output):
+    pairs: Annotated[list[Pair], "Every qualifying pair score_pairs returned, each once"]
 
 
 TOOLS = {
-    Tool.SEARCH_PAPERS: (SearchInput, SearchOutput),
-    Tool.DOWNLOAD_SOURCE: (DownloadInput, DownloadOutput),
+    Tool.DESCRIBE_DATASET: (DescribeInput, DescribeOutput),
+    Tool.LSH_CANDIDATES: (LshInput, LshOutput),
+    Tool.SCORE_PAIRS: (ScoreInput, ScoreOutput),
+    Tool.EXACT_PAIRS: (FindInput, ExactOutput),
 }
-TASKS = {
-    Task.SEARCH_PAPERS: (SearchInput, SearchOutput),
-    Task.SAVE_PAPER_SOURCE: (DownloadInput, DownloadOutput),
-    Task.FIND_AND_SAVE_PAPER: (FindInput, FoundPaperOutput),
-}
+TASKS = {Task.FIND_SIMILAR_PAIRS: (FindInput, FindOutput)}

@@ -13,15 +13,17 @@ from mcp.server.stdio import stdio_server
 from slimconfig import build_output, output_schema, plain_output
 
 from contract import TOOLS, Tool
-from plugin import download_source, search_papers
+from plugin import describe_dataset, exact_pairs, lsh_candidates, score_pairs
 
-server = Server("arxiv-source")
+server = Server("lsh-similar-pairs")
 # NanoAgent names the one folder this plugin may write to.
 WORKSPACE_ENV = "NANOAGENT_WORKSPACE"
 # Each tool's implementation: (its input, the workspace) -> its output, as contract.TOOLS types them.
 IMPLEMENTATIONS = {
-    Tool.SEARCH_PAPERS: search_papers,
-    Tool.DOWNLOAD_SOURCE: download_source,
+    Tool.DESCRIBE_DATASET: describe_dataset,
+    Tool.LSH_CANDIDATES: lsh_candidates,
+    Tool.SCORE_PAIRS: score_pairs,
+    Tool.EXACT_PAIRS: exact_pairs,
 }
 
 

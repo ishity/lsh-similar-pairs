@@ -2,25 +2,16 @@
 
 from contract import Task, Tool
 
-from . import download, find, search
+from . import describe, exact, find, lsh, score
 
 TOOLS = {
-    Tool.DOWNLOAD_SOURCE: download,
-    Tool.SEARCH_PAPERS: search,
+    Tool.DESCRIBE_DATASET: describe,
+    Tool.LSH_CANDIDATES: lsh,
+    Tool.SCORE_PAIRS: score,
+    Tool.EXACT_PAIRS: exact,
 }
-
-
-def _tool_output(module):
-    """A tool task's check: its output judged as its one tool's verify_output judges it."""
-    return lambda arguments, output, reference, workspace: module.verify_output(arguments, output, workspace)
-
-
 # task -> its output's check, verify_task(arguments, output, reference, workspace)
-TASKS = {
-    Task.SEARCH_PAPERS: _tool_output(search),
-    Task.SAVE_PAPER_SOURCE: _tool_output(download),
-    Task.FIND_AND_SAVE_PAPER: find.verify_task,
-}
+TASKS = {Task.FIND_SIMILAR_PAIRS: find.verify_task}
 
 
 def verify_input(tool, value):

@@ -2,7 +2,7 @@ _ > nanoagent.plugin.v0001.ManifestConfig:
 id: lsh-similar-pairs
 name: LSH Similar Pairs
 version: 0.1.0
-status: in-development
+status: ready
 spec: nanoagent.plugin/v0001
 
 runtime > nanoagent.plugin.v0001.RuntimeConfig:
@@ -11,38 +11,32 @@ runtime > nanoagent.plugin.v0001.RuntimeConfig:
 
 permissions > nanoagent.plugin.v0001.PermissionsConfig:
   network > nanoagent.plugin.v0001.NetworkConfig:
-    hosts: [api.openalex.org, export.arxiv.org, api.datacite.org]
+    hosts: []
   filesystem > nanoagent.plugin.v0001.FilesystemConfig:
     write: [workspace]
 
 # One entry per contract.Tool; its input and output classes are contract.TOOLS's.
 tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
-  search_papers:
-    description: Find papers on arXiv and their arXiv ids by an arXiv id or URL or in plain words, from OpenAlex, else arXiv, else DataCite
-  download_source:
-    description: Save an arXiv paper's source in a folder named by its id, downloading it unless it is there already
+  describe_dataset:
+    description: Count a bundled dataset's keywords and pairs, its vector dimension and the hyperplanes LSH may use
+  lsh_candidates:
+    description: Hash a dataset's keywords with SimHash LSH, save the candidate pairs ranked by matched bands, and return their count and histogram
+  score_pairs:
+    description: Score a rank range of an LSH run with the exact cosine rule, within the budget, and return the qualifying pairs
+  exact_pairs:
+    description: Find every qualifying pair of a dataset by brute force, the task's reference
 
 # One entry per contract.Task; its input and output classes are contract.TASKS's.
 tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
-  search-papers:
-    description: Search arXiv for papers
-    runner: tool
-    tools: [search_papers]
-    reference: null
-    instructions: Find the papers on arXiv the query names (an arXiv id or URL, or a title, topic or authors in plain words) and return them, best match first.
-  save-paper-source:
-    description: Save a paper's LaTeX source by its arXiv ID
-    runner: tool
-    tools: [download_source]
-    reference: null
-    instructions: Validate the arXiv ID and return its source in <destination>/<arxiv id>, downloading and unpacking it safely unless it is there already.
-  find-and-save-paper:
-    description: Find a described paper and save its LaTeX source
+  find-similar-pairs:
+    description: Find every keyword pair at least as similar as a threshold, within a scoring budget
     runner: agent
-    tools: [search_papers, download_source]
-    reference: null
+    tools: [describe_dataset, lsh_candidates, score_pairs]
+    reference: exact_pairs
     instructions: |-
-      The request names the paper in the person's words: its arXiv id or URL, title, topic, authors or year. Find it with search_papers, passing an arXiv id or URL as it is, else its title or its topic and authors in plain words, and pick the one result that matches the request.
-      Save its source with download_source, passing the arxiv_id as search_papers returned it and the destination; it goes in <destination>/<arxiv id>.
-      Submit that paper: its search_papers fields, and source_url and folder exactly as download_source returned them.
-      If download_source fails because arXiv is limiting requests (HTTP 429), call no tool again and end without submitting: asking again only keeps the limit on.
+      Find every pair of keywords in the dataset whose cosine similarity is at least threshold, while score_pairs scores at most budget distinct pairs in all. Scoring every pair is far over budget, so SimHash LSH chooses which pairs to score.
+      Start with describe_dataset: it gives the keyword count, the vector dimension, how many hyperplanes LSH may use, and how many pairs there are.
+      Then call lsh_candidates with bits_per_band and bands. Each hyperplane gives each keyword one sign bit. A band is bits_per_band consecutive bits, and its bits are the keyword's signature for that band. A pair is a candidate when its two keywords share the signature of at least one band. More bits per band make every band stricter, so fewer and more similar pairs match; more bands give each similar pair more chances to match, so more pairs match. bits_per_band times bands may not exceed the hyperplanes. The candidates are saved in the workspace, ranked by how many bands they share, most first, because pairs that share more bands tend to be more similar. You get back the run_id, how many candidates there are, and a histogram: for each number of shared bands, how many candidates share exactly that many and their rank range.
+      Score candidates with score_pairs: pass the run_id, a rank range (start_rank, from 1, and count), and the task's dataset, threshold and budget exactly as given. Only pairs no earlier call scored are scored and charged; it returns the qualifying ones, how many pairs it scored and skipped, and how much budget remains. A range holding more new pairs than the budget allows is refused, and the error says the largest count that fits.
+      While budget remains, you may score further ranks, or run lsh_candidates with other bits_per_band and bands and score that run's ranks; pairs already scored are skipped at no cost.
+      Submit every pair any score_pairs call returned as qualifying, each once, with a and b exactly as returned. Submit no other pair: a pair that does not qualify makes the answer wrong, and the answer passes only when it holds at least min_recall of all qualifying pairs.

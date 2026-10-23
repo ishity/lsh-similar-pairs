@@ -1,9 +1,14 @@
 """Checks shared by the tool verifiers. Pure functions of their arguments and the files on disk."""
 
+import json
 import re
 from pathlib import Path
 
-ARXIV_ID = re.compile(r"^(?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?$", re.IGNORECASE)
+from .rule import DECIMAL_RULE, parse_decimal, qualifies
+
+LEDGER = "score_ledger.json"
+CANDIDATES = "candidates"
+HYPERPLANES = 256  # how many hyperplanes src/plugin/data/hyperplanes.json holds
 
 
 def result(valid, message, *, score=None, **details):
@@ -15,51 +20,38 @@ def result(valid, message, *, score=None, **details):
     }
 
 
-def destination_problem(destination):
-    path = Path(destination)
-    if path.is_absolute() or ".." in path.parts or not path.parts:
-        return "destination must stay inside the plugin workspace"
+def decimal_problem(text, name):
+    if parse_decimal(text) is None:
+        return f"{name} must be {DECIMAL_RULE}, got {text!r}"
     return None
 
 
-def query_problem(value, most):
-    """``value``: a contract SearchInput or SaveInput."""
-    if not value.query.strip():
-        return "query must not be blank"
-    if not 1 <= value.max_results <= most:
-        return f"max_results must be between 1 and {most}"
+def run_id_problem(dataset, run_id):
+    if not re.fullmatch(re.escape(dataset.value) + r"-[1-9][0-9]*x[1-9][0-9]*", run_id):
+        return f"run_id {run_id!r} is not a {dataset.value} run, {dataset.value}-<bits_per_band>x<bands>"
     return None
 
 
-def papers_problem(papers, input_value):
-    """What is wrong with a list of returned contract papers, or None."""
-    ids = [paper.arxiv_id for paper in papers]
-    if len(papers) > input_value.max_results:
-        return "more papers than max_results"
-    if len(set(ids)) != len(ids):
-        return "a paper is returned twice"
-    for paper in papers:
-        if not ARXIV_ID.fullmatch(paper.arxiv_id):
-            return f"invalid arXiv id {paper.arxiv_id!r}"
-        if not paper.title or not paper.abs_url.endswith("/abs/" + paper.arxiv_id):
-            return f"paper {paper.arxiv_id} has no title or a mismatched abs_url"
-    return None
-
-
-def paper_folder(destination, arxiv_id):
-    """Where a paper's source is saved: `<destination>/<arxiv id>`, a legacy id's `/` as `_`."""
-    return Path(destination) / arxiv_id.replace("/", "_")
-
-
-def files_problem(folder, declared):
-    """Details of how the files under ``folder`` differ from ``declared``, or None when they match."""
-    if not declared:
-        return {"message": "output must declare at least one extracted file"}
-    present = sorted(path.relative_to(folder).as_posix() for path in folder.rglob("*") if path.is_file())
-    if sorted(declared) == present:
+def read_json(path):
+    """The JSON in ``path``, or None when there is no such file."""
+    path = Path(path)
+    if not path.is_file():
         return None
-    return {
-        "message": f"declared files differ from the files on disk in {folder.name}",
-        "missing": sorted(set(declared) - set(present)),
-        "undeclared": sorted(set(present) - set(declared)),
-    }
+    return json.loads(path.read_text())
+
+
+def scored(pair):
+    """A contract ScoredPair as the ledger records it."""
+    return {"a": pair.a, "b": pair.b, "dot": pair.dot, "norm_a": pair.norm_a, "norm_b": pair.norm_b}
+
+
+def qualifying_problem(pair, threshold):
+    """What is wrong with a pair, as the ledger records it, said to qualify at ``threshold`` (a Fraction)."""
+    name = f"({pair['a']!r}, {pair['b']!r})"
+    if not pair["a"] < pair["b"]:
+        return f"pair {name} is not in canonical order, a before b"
+    if pair["norm_a"] <= 0 or pair["norm_b"] <= 0:
+        return f"pair {name} has a squared length that is not positive"
+    if not qualifies(pair["dot"], pair["norm_a"], pair["norm_b"], threshold):
+        return f"pair {name} does not meet the threshold by its own dot and norms"
+    return None
